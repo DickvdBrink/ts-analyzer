@@ -17,7 +17,7 @@ class AnalyzerWalker extends TypeScript.SyntaxWalker {
         super.visitToken(token);
     }
 
-    visitMemberFunctionDeclaration(node: TypeScript.MemberFunctionDeclarationSyntax): any {
+    visitMemberFunctionDeclaration(node: TypeScript.MemberFunctionDeclarationSyntax): void {
         var isPrivate = TypeScript.SyntaxUtilities.containsToken(node.modifiers, TypeScript.SyntaxKind.PrivateKeyword);
         if (!isPrivate) {
             super.visitMemberFunctionDeclaration(node);
@@ -29,20 +29,33 @@ class AnalyzerWalker extends TypeScript.SyntaxWalker {
         var position = this.position + TypeScript.fullWidth(node.modifiers) + propertyNode.leadingTriviaWidth();
 
         var references = this.ls.getReferencesAtPosition(this.fileName(), position);
-
-        if (!references || references.length == 0) {
-            this.addError("visitMemberFunctionDeclaration references.length == 0 " + name, position);
-            super.visitMemberFunctionDeclaration(node);
-            return;
-        }
         if (references.length == 1) {
             this.addError("Unused method: " + name, position);
         }
 
+        this.checkUnusedParameters(node.callSignature.parameterList);
         super.visitMemberFunctionDeclaration(node);
     }
 
-    visitVariableDeclarator(node: TypeScript.VariableDeclaratorSyntax): any {
+    private checkUnusedParameters(node: TypeScript.ParameterListSyntax) {
+        var position = node.openParenToken.fullStart() + node.openParenToken.fullWidth();
+
+        for (var i = 0; i < node.parameters.length; i++) {
+            var child = <TypeScript.ParameterSyntax><any> node.parameters[i];
+            if (child.kind == TypeScript.SyntaxKind.CommaToken) {
+                position += TypeScript.fullWidth(child);
+                continue;
+            }
+            var references = this.ls.getReferencesAtPosition(this.fileName(), position + child.identifier.leadingTriviaWidth());
+            if (references.length == 1) {
+                this.addError("Unused parameter: " + child.identifier.text(), position + child.identifier.leadingTriviaWidth())
+            }
+
+            position += TypeScript.fullWidth(child);
+        }
+    }
+
+    visitVariableDeclarator(node: TypeScript.VariableDeclaratorSyntax): void {
         var propertyNode = <TypeScript.ISyntaxToken> node.propertyName;
         var name = propertyNode.text();
         var position = this.position + propertyNode.leadingTriviaWidth();
